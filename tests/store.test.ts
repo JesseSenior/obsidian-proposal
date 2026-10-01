@@ -1,0 +1,113 @@
+import assert from 'node:assert/strict';
+import { test } from 'node:test';
+import { ProposalStore, validatePath } from '../src/store';
+import { ProposalTools } from '../src/tools';
+import type { ProposalIO } from '../src/types';
+
+class MemoryIO implements ProposalIO {
+	configDir = 'config';
+	originals = new Map([['One.md', 'old\ncontext\n'], ['Two.md', 'second\n']]);
+	files = new Map<string, string>();
+	readCurrent(path: string): Promise<string> {
+		const text = this.originals.get(path);
+		return text === undefined ? Promise.reject(new Error('Note not found')) : Promise.resolve(text);
+	}
+	async writeCurrent(path: string, expected: string, text: string): Promise<void> {
+		assert.equal(await this.readCurrent(path), expected);
+		this.originals.set(path, text);
+	}
+	read(path: string): Promise<string | null> { return Promise.resolve(this.files.get(path) ?? null); }
+	write(path: string, text: string): Promise<void> { this.files.set(path, text); return Promise.resolve(); }
+	remove(path: string): Promise<void> { this.files.delete(path); return Promise.resolve(); }
+	list(): Promise<string[]> { return Promise.resolve([...this.files.keys()]); }
+}
+
+const fixture = () => {
+	const io = new MemoryIO();
+	const store = new ProposalStore(io);
+	return { io, store, tools: new ProposalTools(store, () => 2000) };
+};
+const patch = (body: string) => `*** Begin Patch\n${body}\n*** End Patch`;
+
+void test('read falls back to original without creating a proposal', async () => {
+	const { tools, io } = fixture();
+	assert.equal((await tools.read({ path: 'One.md' })).text, 'old\ncontext\n');
+	assert.equal(io.files.size, 0);
+});
+
+void test('per-file failure leaves all blocks unchanged and other files succeed', async () => {
+	const { tools, io } = fixture();
+	const result = await tools.edit({ patch: patch('*** Update File: One.md\n@@\n-old\n+new\n@@\n-missing\n+bad\n*** Update File: Two.md\n@@\n-second\n+changed') });
+	assert.deepEqual(result.files.map(file => file.ok), [false, true]);
+	assert.equal(io.files.has('.proposal/One.md.json'), false);
+	assert.equal((await tools.read({ path: 'Two.md' })).text, 'changed\n');
+	assert.equal(io.originals.get('Two.md'), 'second\n');
+});
+
+void test('comments survive restart, context comments survive tool edits, overlaps are reported', async () => {
+	const { store, tools, io } = fixture();
+	const before = await store.read('One.md');
+	await store.manual('One.md', before.proposal, before.proposal.text, [
+		{ id: 'old', from: 0, to: 3, text: 'Change' }, { id: 'context', from: 4, to: 11, text: 'Keep' },
+	]);
+	const result = await tools.edit({ patch: patch('*** Update File: One.md\n@@\n-old\n+longer\n context') });
+	assert.deepEqual(result.files[0]?.removedCommentIds, ['old']);
+	const reloaded = await new ProposalStore(io).read('One.md');
+	assert.deepEqual(reloaded.proposal.comments, [{ id: 'context', from: 7, to: 14, text: 'Keep' }]);
+	assert.equal(reloaded.proposal.text, 'longer\ncontext\n');
+});
+
+void test('manual save detects stale proposal and operations serialize', async () => {
+	const { store } = fixture();
+	const snapshot = await store.read('One.md');
+	const results = await Promise.allSettled([
+		store.manual('One.md', snapshot.proposal, 'first', []),
+		store.manual('One.md', snapshot.proposal, 'second', []),
+	]);
+	assert.equal(results[0]?.status, 'fulfilled');
+	assert.equal(results[1]?.status, 'rejected');
+	assert.equal((await store.read('One.md')).proposal.text, 'first');
+});
+
+void test('apply preserves comments; clear preserves originals; inactive records are ignored', async () => {
+	const { store, io } = fixture();
+	const before = await store.read('One.md');
+	await store.manual('One.md', before.proposal, 'new', [{ id: 'a', from: 0, to: 3, text: 'Discuss' }]);
+	await store.apply(await store.read('One.md'));
+	assert.equal(io.originals.get('One.md'), 'new');
+	assert.equal((await store.active()).length, 1);
+	await store.edit('One.md', [], ['a']);
+	assert.equal((await store.active()).length, 0);
+	await store.clear('One.md');
+	assert.equal(io.files.size, 0);
+	assert.equal(io.originals.get('One.md'), 'new');
+});
+
+void test('stale original or proposal cannot be applied', async () => {
+	const { store, io } = fixture();
+	const before = await store.read('One.md');
+	await store.manual('One.md', before.proposal, 'new', []);
+	const snapshot = await store.read('One.md');
+	io.originals.set('One.md', 'outside edit');
+	await assert.rejects(store.apply(snapshot), /Text changed/);
+	assert.equal(io.originals.get('One.md'), 'outside edit');
+	const latest = await store.read('One.md');
+	await store.manual('One.md', latest.proposal, 'another proposal', []);
+	await assert.rejects(store.apply(latest), /Text changed/);
+});
+
+void test('tools flush editor changes before reading and writing', async () => {
+	const { store, tools } = fixture();
+	tools.flushers.add(async () => {
+		const snapshot = await store.read('One.md');
+		await store.manual('One.md', snapshot.proposal, 'flushed\n', []);
+	});
+	assert.equal((await tools.read({ path: 'One.md' })).text, 'flushed\n');
+});
+
+void test('paths cannot escape the vault or target hidden/configuration files', () => {
+	for (const path of ['../One.md', '/One.md', 'a/../One.md', '.proposal/One.md', '.private/One.md', 'a\\One.md', 'C:/One.md', 'One.txt', 'a//One.md', 'settings/One.md']) {
+		assert.throws(() => validatePath(path, 'settings'));
+	}
+	assert.equal(validatePath('草稿/笔记.md', 'config'), '草稿/笔记.md');
+});
