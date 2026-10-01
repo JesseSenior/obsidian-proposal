@@ -1,8 +1,81 @@
-/*
+.proposal-view { display: flex; flex-direction: column; height: 100%; gap: 8px; overflow: hidden; }
+.proposal-toolbar { display: flex; flex-wrap: wrap; gap: 4px; }
+.proposal-toolbar button { background: transparent; box-shadow: none; padding: 6px; height: auto; }
+.proposal-toolbar button.is-active { background: var(--background-modifier-hover); color: var(--text-accent); }
+.proposal-view h3 { margin: 0; font-size: var(--font-ui-medium); }
+.proposal-body { display: flex; flex: 1; min-height: 0; gap: 12px; }
+.view-content.proposal-file-view { display: flex; flex-direction: column; padding: 0; }
+.proposal-file-toggle, .proposal-file-action { background: transparent; box-shadow: none; height: auto; }
+.proposal-files { flex: 1; min-height: 0; overflow: auto; padding: 8px; }
+.proposal-file { position: relative; margin-bottom: 6px; border-radius: var(--radius-s); }
+.proposal-file-open { display: grid; grid-template-columns: minmax(0, 1fr) auto; grid-template-rows: auto minmax(20px, auto); min-height: 48px; gap: 2px 8px; width: 100%; height: auto; white-space: normal; text-align: left; padding: 6px 10px; background: transparent; box-shadow: none; font-size: var(--nav-item-size); line-height: 1.3; font-weight: var(--nav-item-weight, 400); }
+.proposal-file-name { grid-column: 1; grid-row: 1; overflow-wrap: anywhere; }
+.proposal-file-path { grid-column: 1; grid-row: 2; min-width: 0; color: var(--text-muted); font-size: var(--font-ui-smaller); overflow-wrap: anywhere; }
+.proposal-file-counts { grid-column: 2; grid-row: 1; align-self: start; min-width: 48px; text-align: right; color: var(--text-muted); white-space: nowrap; }
+.proposal-file { color: var(--nav-item-color); }
+.proposal-file:hover { background: var(--nav-item-background-hover); color: var(--nav-item-color-hover); }
+.proposal-file.is-active { background: var(--nav-item-background-active); color: var(--nav-item-color-active); }
+.proposal-file .proposal-file-open, .proposal-file .proposal-file-open:hover { background: transparent; color: inherit; }
+.proposal-files summary { color: var(--nav-item-color); font-size: var(--nav-item-size); line-height: 1.3; list-style: none; }
+.proposal-files summary::-webkit-details-marker { display: none; }
+.proposal-folder-entry:not([open]) > summary .collapse-icon svg { transform: rotate(-90deg); }
+.proposal-row-actions { position: absolute; right: 6px; bottom: 2px; display: flex; visibility: hidden; }
+.proposal-file:hover .proposal-row-actions, .proposal-file:focus-within .proposal-row-actions { visibility: visible; }
+.proposal-row-actions button { width: 24px; height: 24px; padding: 4px; background: transparent; box-shadow: none; }
+.proposal-row-actions button:hover { background: var(--background-modifier-hover); }
+.proposal-row-actions .svg-icon { width: 16px; height: 16px; }
+.proposal-files.is-tree { padding: 4px 12px 24px; }
+.proposal-review { display: flex; flex: 1; min-width: 0; flex-direction: column; }
+.proposal-labels { display: flex; gap: 32px; padding-bottom: 8px; font-weight: var(--font-semibold); }
+.proposal-labels span { width: 50%; }
+.proposal-editors { flex: 1; min-height: 0; overflow: auto; }
+.proposal-editors .cm-mergeView { min-height: 100%; display: flex; flex-direction: column; }
+.proposal-editors .cm-mergeViewEditors { flex: 1; }
+.proposal-editors .cm-editor { background: var(--background-primary); color: var(--text-normal); }
+.proposal-editors .cm-content { font-family: var(--font-text); }
+.proposal-editors .cm-gutters { background: var(--background-secondary); color: var(--text-muted); }
+.proposal-editors .cm-merge-revert { flex: 0 0 32px; width: 32px; min-height: 100%; background: var(--background-primary); box-shadow: inset 8px 0 8px -8px var(--background-modifier-box-shadow), inset -8px 0 8px -8px var(--background-modifier-box-shadow); border-inline: 1px solid var(--background-modifier-border); }
+.proposal-change-controls { position: absolute; left: 4px; display: flex; flex-direction: column; border: 1px solid var(--background-modifier-border); border-radius: var(--radius-s); overflow: hidden; }
+.proposal-editors .proposal-change-controls button { position: static; display: flex; align-items: center; justify-content: center; width: 22px; height: 18px; min-width: 0; padding: 1px 3px; border-radius: 0; background: var(--interactive-normal); color: var(--text-muted); box-shadow: none; cursor: pointer; }
+.proposal-editors .proposal-change-controls button + button { border-top: 1px solid var(--background-modifier-border); }
+.proposal-editors .proposal-change-controls button:hover { background: var(--interactive-hover); color: var(--text-normal); }
+.proposal-change-controls .svg-icon { width: 14px; height: 14px; }
+.proposal-comment-mark { text-decoration: underline; text-decoration-color: var(--interactive-accent); text-decoration-thickness: 2px; text-underline-offset: 3px; cursor: help; }
+.proposal-comment-anchor { color: var(--interactive-accent); }
+body .cm-tooltip.proposal-comment-popup, body .cm-tooltip:has(.proposal-comment-hover) { padding: 8px; border: 1px solid var(--background-modifier-border); border-radius: var(--radius-m); background: var(--background-secondary); color: var(--text-normal); box-shadow: var(--shadow-s); max-width: min(320px, 100vw); }
+body .cm-tooltip.proposal-comment-popup:not(:has(form)) { padding: 3px; }
+.proposal-comment-popup .proposal-selection-comment { height: 24px; padding: 2px 8px; font-size: var(--font-ui-small); background: var(--interactive-normal); border: 1px solid var(--background-modifier-border); border-radius: var(--radius-s); box-shadow: none; cursor: pointer; }
+.proposal-comment-popup .proposal-selection-comment:hover { background: var(--interactive-hover); }
+.proposal-comment-popup, .cm-tooltip:has(.proposal-comment-hover) { overflow: auto; box-sizing: border-box; }
+.proposal-editors .cm-editor .cm-collapsedLines { color: var(--text-muted); background: var(--background-secondary); }
+.proposal-editors .cm-editor .cm-collapsedLines:hover { background: var(--background-modifier-hover); }
+.cm-tooltip.proposal-comment-popup .cm-tooltip-arrow::before, .cm-tooltip:has(.proposal-comment-hover) .cm-tooltip-arrow::before { border-top-color: var(--background-modifier-border); border-bottom-color: var(--background-modifier-border); }
+.cm-tooltip.proposal-comment-popup .cm-tooltip-arrow::after, .cm-tooltip:has(.proposal-comment-hover) .cm-tooltip-arrow::after { border-top-color: var(--background-secondary); border-bottom-color: var(--background-secondary); }
+.proposal-comment-hover { white-space: pre-wrap; overflow-wrap: anywhere; }
+.proposal-comment-hover > div + div { border-top: 1px solid var(--background-modifier-border); margin-top: 6px; padding-top: 6px; }
+.proposal-comment-form { width: 280px; max-width: 100%; }
+.proposal-comment-form + .proposal-comment-form { margin-top: 8px; }
+.proposal-comment-input { width: 100%; min-height: 80px; resize: vertical; }
+.proposal-comment-actions { display: flex; gap: 6px; margin-top: 6px; }
+.proposal-status { cursor: pointer; }
 
-This CSS file will be included with your plugin, and
-available in the app when your plugin is enabled.
+.proposal-editors .cm-content { caret-color: var(--text-normal); cursor: text; }
+.proposal-editors .cm-cursor, .proposal-editors .cm-dropCursor { border-left-color: var(--text-normal); }
+body.theme-dark .proposal-editors { color-scheme: dark; }
+body.theme-light .proposal-editors { color-scheme: light; }
 
-If your plugin does not need CSS, delete this file.
+.proposal-editors .cm-collapsedLines { position: relative; padding: 5px 10px; }
+.proposal-editors .cm-collapsedLines::before, .proposal-editors .cm-collapsedLines::after { content: none; }
+.proposal-editors .proposal-fold-label { height: auto; padding: 0; background: transparent; color: inherit; font: inherit; box-shadow: none; }
+.proposal-fold-handle { position: absolute; left: 0; right: 0; height: 5px; cursor: ns-resize; touch-action: none; }
+.proposal-fold-top { top: 0; }
+.proposal-fold-bottom { bottom: 0; }
+.proposal-fold-handle:hover { background: var(--interactive-accent); }
+body.proposal-fold-dragging, body.proposal-fold-dragging * { cursor: ns-resize !important; user-select: none !important; }
 
-*/
+.proposal-file.is-tree { margin-bottom: 2px; }
+.proposal-file.is-tree .proposal-file-open { grid-template-rows: auto; min-height: 0; padding: var(--nav-item-padding); margin-bottom: 0; }
+.proposal-file.is-tree .proposal-row-actions { top: 50%; bottom: auto; transform: translateY(-50%); }
+.proposal-file.is-tree:hover .proposal-file-counts, .proposal-file.is-tree:focus-within .proposal-file-counts { visibility: hidden; }
+
+.proposal-file-open.tree-item-self::before { display: none; }
