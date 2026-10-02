@@ -1,6 +1,8 @@
 import { ItemView, Notice, setIcon, type WorkspaceLeaf } from 'obsidian';
 import type { ProposalTools } from '../tools';
 import { message, type Snapshot } from '../types';
+import { matchesPath, type PathChange } from '../paths';
+import { isSupportedPath } from '../store';
 import { ReviewEditor } from './editor';
 import { confirmAction } from './modals';
 
@@ -21,6 +23,7 @@ export class ProposalView extends ItemView {
 	private closed = false;
 	private snapshots: Snapshot[] = [];
 	private navigationRequest = 0;
+	private openingPath?: string;
 	private listRequest = 0;
 	private flushBound = () => this.flush();
 
@@ -76,11 +79,43 @@ export class ProposalView extends ItemView {
 
 	async openFile(path: string): Promise<void> {
 		const navigation = ++this.navigationRequest;
-		await this.flush();
-		const snapshot = await this.tools.store.read(path);
-		if (navigation !== this.navigationRequest || this.closed) return;
-		this.show(snapshot);
-		await this.refreshFiles();
+		this.openingPath = path;
+		try {
+			await this.flush();
+			const snapshot = await this.tools.store.read(path);
+			if (navigation !== this.navigationRequest || this.closed) return;
+			this.show(snapshot);
+			await this.refreshFiles();
+		} catch (error) {
+			if (navigation === this.navigationRequest && !this.closed) throw error;
+		} finally {
+			if (navigation === this.navigationRequest) this.openingPath = undefined;
+		}
+	}
+
+	changePath(change: PathChange): void {
+		if (this.openingPath && matchesPath(this.openingPath, change)) {
+			++this.navigationRequest;
+			this.openingPath = undefined;
+		}
+		const snapshot = this.snapshot;
+		if (snapshot && matchesPath(snapshot.path, change)) {
+			const path = change.newPath && change.newPath + snapshot.path.slice(change.oldPath.length);
+			if (path && isSupportedPath(path, this.app.vault.configDir)) {
+				snapshot.path = path;
+				this.title.setText(`Proposal: ${path}`);
+				this.selectFile(path);
+			} else {
+				window.clearTimeout(this.timer);
+				this.dirty = false;
+				this.snapshot = undefined;
+				this.editor?.destroy();
+				this.editor = undefined;
+				this.panel.empty();
+				this.title.setText('Proposal');
+			}
+		}
+		this.scheduleRefresh();
 	}
 
 	private show(snapshot: Snapshot): void {
@@ -112,7 +147,11 @@ export class ProposalView extends ItemView {
 				try {
 					await this.tools.store.manual(snapshot.path, snapshot.proposal, proposal.text, proposal.comments);
 					snapshot.proposal = proposal;
-				} catch (error) { this.dirty = true; throw error; }
+				} catch (error) {
+					if (this.snapshot !== snapshot) return;
+					this.dirty = true;
+					throw error;
+				}
 			}
 		});
 		await this.pending;
@@ -130,8 +169,14 @@ export class ProposalView extends ItemView {
 		await this.flush();
 		if (this.snapshot) {
 			const displayed = this.snapshot;
-			const next = await this.tools.store.read(displayed.path);
-			if (this.snapshot !== displayed || this.closed) return;
+			const path = displayed.path;
+			let next: Snapshot;
+			try { next = await this.tools.store.read(path); }
+			catch (error) {
+				if (this.snapshot !== displayed || displayed.path !== path || this.closed) return;
+				throw error;
+			}
+			if (this.snapshot !== displayed || displayed.path !== path || this.closed) return;
 			if (this.dirty) return this.refresh();
 			if (next.current !== displayed.current || JSON.stringify(next.proposal) !== JSON.stringify(displayed.proposal)) this.show(next);
 		}

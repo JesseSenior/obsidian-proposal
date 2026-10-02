@@ -7,6 +7,7 @@ import { VaultIO } from './vault-io';
 import { registerStatus } from './ui/status';
 import { ProposalView, VIEW_TYPE } from './ui/view';
 import { ProposalSidebar } from './ui/sidebar';
+import { registerPaths } from './lifecycle';
 
 export default class ProposalPlugin extends Plugin {
 	settings!: ProposalSettings;
@@ -15,9 +16,10 @@ export default class ProposalPlugin extends Plugin {
 	async onload(): Promise<void> {
 		this.settings = { ...DEFAULT_SETTINGS, ...await this.loadData() as Partial<ProposalSettings> };
 		if (!Number.isInteger(this.settings.readLimitWords) || this.settings.readLimitWords < 1) this.settings.readLimitWords = DEFAULT_SETTINGS.readLimitWords;
-		this.tools = new ProposalTools(new ProposalStore(new VaultIO(this.app.vault)), () => this.settings.readLimitWords);
+		this.tools = new ProposalTools(new ProposalStore(new VaultIO(this.app.vault), false), () => this.settings.readLimitWords);
 		const sidebar = new ProposalSidebar(this, this.tools, path => this.openReview(path));
 		this.registerView(VIEW_TYPE, leaf => new ProposalView(leaf, this.tools, path => sidebar.select(path)));
+		registerPaths(this, this.tools);
 		sidebar.start();
 		this.addSettingTab(new ProposalSettingTab(this.app, this));
 		this.addCommand({ id: 'open-review', name: 'Open review', callback: () => this.openReview() });

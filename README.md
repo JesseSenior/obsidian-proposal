@@ -53,7 +53,9 @@ obsidian://proposal?vault=My%20vault&file=Notes%2FExample.md
 
 ## Saved proposals
 
-Proposals and comments stay in the vault's `.proposal` folder and survive restarts. Opening or reading a note does not create a proposal. Clear a proposal before you rename or delete its original note.
+Proposals and comments stay in the vault's `.proposal` folder and survive restarts. Opening or reading a note does not create a proposal. Renaming or moving a note or folder while the plugin is enabled moves its proposals and comments to the new paths. If a destination already has a proposal, the incoming proposal replaces it.
+
+Deleting an original note also deletes its proposal and comments. After the vault loads, and when the proposal list refreshes, proposals whose original notes no longer exist are deleted automatically. Renames made while the plugin is disabled cannot be tracked; proposals left at the old paths are deleted on reload. Moving a note outside the supported Markdown paths also removes its proposal.
 
 Use the plugin or CLI methods to change proposals. If you sync the vault, check that your sync service includes `.proposal`.
 

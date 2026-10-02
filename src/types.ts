@@ -36,10 +36,12 @@ export interface EditRequest {
 
 export interface ProposalIO {
 	configDir: string;
+	originalExists(path: string): Promise<boolean>;
 	readCurrent(path: string): Promise<string>;
 	writeCurrent(path: string, expected: string, text: string): Promise<void>;
 	read(path: string): Promise<string | null>;
 	write(path: string, text: string): Promise<void>;
+	renameCase(path: string, destination: string): Promise<boolean>;
 	remove(path: string): Promise<void>;
 	list(): Promise<string[]>;
 }

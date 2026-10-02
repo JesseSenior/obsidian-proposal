@@ -2,25 +2,8 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { ProposalStore, validatePath } from '../src/store';
 import { ProposalTools } from '../src/tools';
-import type { ProposalIO } from '../src/types';
+import { MemoryIO } from './memory-io';
 
-class MemoryIO implements ProposalIO {
-	configDir = 'config';
-	originals = new Map([['One.md', 'old\ncontext\n'], ['Two.md', 'second\n']]);
-	files = new Map<string, string>();
-	readCurrent(path: string): Promise<string> {
-		const text = this.originals.get(path);
-		return text === undefined ? Promise.reject(new Error('Note not found')) : Promise.resolve(text);
-	}
-	async writeCurrent(path: string, expected: string, text: string): Promise<void> {
-		assert.equal(await this.readCurrent(path), expected);
-		this.originals.set(path, text);
-	}
-	read(path: string): Promise<string | null> { return Promise.resolve(this.files.get(path) ?? null); }
-	write(path: string, text: string): Promise<void> { this.files.set(path, text); return Promise.resolve(); }
-	remove(path: string): Promise<void> { this.files.delete(path); return Promise.resolve(); }
-	list(): Promise<string[]> { return Promise.resolve([...this.files.keys()]); }
-}
 
 const fixture = () => {
 	const io = new MemoryIO();

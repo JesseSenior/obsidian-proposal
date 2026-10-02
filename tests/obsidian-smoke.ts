@@ -244,3 +244,87 @@ void test('Obsidian CLI, review, comments, apply, clear, URL, and unload', { tim
 	await until('return !!p;');
 	assert.equal(query<number>('document.querySelectorAll(".proposal-status").length'), 1);
 });
+
+void test('proposal lifecycle follows open editors and cleans missing notes after reload', { timeout: 120000 }, async () => {
+	await run(`await p.tools.flush();
+		const old=app.vault.getAbstractFileByPath("Lifecycle");if(old)await app.vault.delete(old,true);
+		const moved=app.vault.getAbstractFileByPath("LifecycleMoved");if(moved)await app.vault.delete(moved,true);
+		await app.vault.createFolder("Lifecycle/Nested");
+		await app.vault.create("Lifecycle/Nested/Note.md","Original.\\n");
+		await p.openReview("Lifecycle/Nested/Note.md");return true;`);
+	await run(`v.editor.merge.b.dispatch({changes:{from:0,insert:"Unsaved "}});window.clearTimeout(v.timer);
+		await app.vault.rename(app.vault.getAbstractFileByPath("Lifecycle/Nested/Note.md"),"Lifecycle/Nested/Renamed.md");
+		return true;`);
+	assert.equal(await run('return v.snapshot?.path;'), 'Lifecycle/Nested/Renamed.md');
+	await run('await p.tools.flush();return true;');
+	assert.equal(await run('return (await p.tools.store.read("Lifecycle/Nested/Renamed.md")).proposal.text;'), 'Unsaved Original.\n');
+	assert.equal(await run('return await app.vault.adapter.exists(".proposal/Lifecycle/Nested/Note.md.json");'), false);
+
+	await run(`const snapshot=await p.tools.store.read("Lifecycle/Nested/Renamed.md");
+		await p.tools.store.manual(snapshot.path,snapshot.proposal,snapshot.proposal.text,[{id:"keep",from:0,to:1,text:"Keep comment"}]);
+		await v.refresh();
+		v.editor.merge.b.dispatch({changes:{from:0,insert:"Folder "}});window.clearTimeout(v.timer);
+		await app.vault.rename(app.vault.getAbstractFileByPath("Lifecycle"),"LifecycleMoved");return true;`);
+	await run('await p.tools.flush();return true;');
+	assert.equal(await run('return v.snapshot?.path;'), 'LifecycleMoved/Nested/Renamed.md');
+	const moved = await run<{ text: string; comments: { text: string }[] }>('return (await p.tools.store.read(v.snapshot.path)).proposal;');
+	assert.equal(moved.text, 'Folder Unsaved Original.\n');
+	assert.equal(moved.comments[0]?.text, 'Keep comment');
+	assert.equal(await run('return await app.vault.adapter.exists(".proposal/Lifecycle/Nested/Renamed.md.json");'), false);
+
+	await run(`v.editor.merge.b.dispatch({changes:{from:0,insert:"Discard on deletion "}});window.clearTimeout(v.timer);
+		await app.vault.delete(app.vault.getAbstractFileByPath(v.snapshot.path));
+		await p.tools.flush();await p.tools.store.active();return true;`);
+	assert.equal(await run('return v.snapshot?.path ?? null;'), null);
+	assert.equal(await run('return await app.vault.adapter.exists(".proposal/LifecycleMoved/Nested/Renamed.md.json");'), false);
+	assert.equal(await run('return !!v.editor;'), false);
+	await run(`const old=app.vault.getAbstractFileByPath("CaseFolder") ?? app.vault.getAbstractFileByPath("casefolder");
+		if(old)await app.vault.delete(old,true);
+		await app.vault.createFolder("CaseFolder");await app.vault.create("CaseFolder/Case.md","Original case.\\n");
+		const snapshot=await p.tools.store.read("CaseFolder/Case.md");
+		await p.tools.store.manual(snapshot.path,snapshot.proposal,"Case proposal.\\n",[]);
+		await app.vault.rename(app.vault.getAbstractFileByPath("CaseFolder/Case.md"),"CaseFolder/case.md");
+		await p.tools.store.active();return true;`);
+	assert.equal(await run('return (await p.tools.store.read("CaseFolder/case.md")).proposal.text;'), 'Case proposal.\n');
+	await run('await app.vault.rename(app.vault.getAbstractFileByPath("CaseFolder"),"casefolder");await p.tools.store.active();return true;');
+	assert.equal(await run('return (await p.tools.store.read("casefolder/case.md")).proposal.text;'), 'Case proposal.\n');
+	assert.equal(await run('return (await p.tools.store.paths()).includes("casefolder/case.md");'), true);
+	cli('plugin:disable', 'id=proposal');
+	await until('return !p;');
+	await run('await app.vault.rename(app.vault.getAbstractFileByPath("casefolder/case.md"),"casefolder/CASE.md");return true;');
+	cli('plugin:enable', 'id=proposal');
+	await until('return !!p && !await app.vault.adapter.exists(".proposal/casefolder/case.md.json");');
+	assert.equal(await run('return !!app.vault.getAbstractFileByPath("casefolder/CASE.md");'), true);
+
+	await run(`await app.vault.create("LifecycleMoved/Keep.md","Keep original.\\n");
+		const snapshot=await p.tools.store.read("LifecycleMoved/Keep.md");
+		await p.tools.store.manual(snapshot.path,snapshot.proposal,"Keep proposal.\\n",[]);
+		await app.vault.adapter.write(".proposal/LifecycleMoved/Missing.md.json",JSON.stringify({version:1,text:"Missing",comments:[]}));
+		return true;`);
+	cli('plugin:reload', 'id=proposal');
+	await until('return !!p && !await app.vault.adapter.exists(".proposal/LifecycleMoved/Missing.md.json");');
+	assert.equal(await run('return (await p.tools.store.read("LifecycleMoved/Keep.md")).proposal.text;'), 'Keep proposal.\n');
+	await run('await p.openReview("LifecycleMoved/Keep.md");return true;');
+	await run(`v.editor.merge.b.dispatch({changes:{from:0,insert:"After reload "}});window.clearTimeout(v.timer);
+		await app.vault.rename(app.vault.getAbstractFileByPath("LifecycleMoved/Keep.md"),"LifecycleMoved/Reloaded.md");
+		await p.tools.flush();return true;`);
+	assert.equal(await run('return (await p.tools.store.read("LifecycleMoved/Reloaded.md")).proposal.text;'), 'After reload Keep proposal.\n');
+	assert.equal(await run('return (await p.tools.store.active()).some(s=>s.path==="LifecycleMoved/Reloaded.md");'), true);
+	await run(`await p.openReview("LifecycleMoved/Reloaded.md");await p.tools.store.active();
+		window.clearTimeout(v.refreshTimer);
+		const io=p.tools.store.io;
+		const exists=io.originalExists.bind(io);
+		let enter,release;
+		const started=new Promise(resolve=>{enter=resolve;});
+		const blocked=new Promise(resolve=>{release=resolve;});
+		io.originalExists=async path=>{enter();await blocked;return exists(path);};
+		const refreshing=v.refresh();
+		try {
+			await started;
+			await app.vault.delete(app.vault.getAbstractFileByPath("LifecycleMoved/Reloaded.md"));
+		} finally {io.originalExists=exists;release();}
+		await refreshing;await p.tools.store.active();return true;`);
+	assert.equal(await run('return v.snapshot?.path ?? null;'), null);
+	assert.equal(await run('return await app.vault.adapter.exists(".proposal/LifecycleMoved/Reloaded.md.json");'), false);
+	assert.equal(query<boolean>('Array.from(document.querySelectorAll(".notice")).some(n=>n.textContent.includes("Markdown note not found"))'), false);
+});
