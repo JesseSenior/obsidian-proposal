@@ -209,7 +209,7 @@ export class ProposalStore {
 		});
 	}
 
-	apply(snapshot: Snapshot, replacement = snapshot.proposal.text): Promise<void> {
+	apply(snapshot: Snapshot, replacement?: string): Promise<void> {
 		return this.run(snapshot.path, async () => {
 			const latest = await this.load(snapshot.path);
 			if (latest.current !== snapshot.current || latest.proposal.text !== snapshot.proposal.text) {
@@ -217,8 +217,9 @@ export class ProposalStore {
 			}
 			const path = this.currentPath(snapshot.path);
 			if (!path) throw new Error(`Markdown note not found: ${snapshot.path}`);
-			await this.io.writeCurrent(path, snapshot.current, replacement);
-			for (const listener of this.listeners) listener(snapshot.path);
+			await this.io.writeCurrent(path, snapshot.current, replacement ?? snapshot.proposal.text);
+			if (replacement === undefined) await this.remove(path);
+			else for (const listener of this.listeners) listener(snapshot.path);
 		});
 	}
 

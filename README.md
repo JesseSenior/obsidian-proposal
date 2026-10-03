@@ -29,7 +29,7 @@ Open a Markdown note and select the diff icon beside the pencil in the status ba
 
 The **Proposal files** sidebar supports list and tree views. Counts such as `+3 -1 #2` mean three added lines, one deleted line, and two comments. Hover over a file to apply or clear it. The sidebar toolbar has **Apply all** and **Clear all**; both ask for confirmation.
 
-Applying changes keeps comments. Clearing removes proposals and comments without changing original notes. If an original changes before you apply, review the updated comparison and select Apply again.
+单文件 Apply 和 Apply all 成功后，会删除对应 proposal 及其全部评论；Apply all 也处理仅有评论或没有正文差异的存储记录。Clear 和 Clear all 删除对应 proposal 及其全部评论，不修改原笔记。当前文件的 proposal 删除后，对比页会清空。两栏之间的箭头仅应用一处差异，保留 proposal 和评论。如果应用前原笔记已更改，请检查更新后的对比，再执行 Apply；应用失败的 proposal 会保留。
 
 ## Use with CLI tools
 

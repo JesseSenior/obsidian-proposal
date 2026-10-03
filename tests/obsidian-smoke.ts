@@ -206,21 +206,24 @@ void test('Obsidian CLI, review, comments, apply, clear, URL, and unload', { tim
 	await until('return (await app.vault.read(app.vault.getAbstractFileByPath("Smoke/Other.md")))==="Changed note.\\n";');
 	assert.equal(await run('return v.snapshot.path;'), 'Smoke/Review.md');
 	await run('await app.vault.modify(app.vault.getAbstractFileByPath("Smoke/Other.md"),"Other note.\\n");return true;');
-	await until('return v.snapshots.length===2;');
+	await until('return v.snapshots.length===1;');
+	await run(`return await p.proposal_edit({patch:${JSON.stringify(secondPatch)}});`);
 
 	await run('document.querySelector(".proposal-file-action[data-action=applyAll]").click();return true;');
 	await until('return document.querySelector(".modal-title")?.textContent==="Apply all proposals?";');
 	assert.equal(await run('return await app.vault.read(app.vault.getAbstractFileByPath("Smoke/Other.md"));'), 'Other note.\n');
 	await run('Array.from(document.querySelectorAll(".modal button")).find(b=>b.textContent==="Confirm").click();return true;');
 	await until('return (await app.vault.read(app.vault.getAbstractFileByPath("Smoke/Other.md")))==="Changed note.\\n";');
+	await until('return !v.editor && (await p.tools.store.paths()).length===0;');
+	await run('await p.openReview("Smoke/Review.md");return true;');
 	await run('v.editor.merge.b.dispatch({changes:{from:0,insert:"Apply through toolbar\\n"}});document.querySelector(".proposal-toolbar [data-action=applyCurrent]").click();return true;');
 	await until('return (await app.vault.read(app.vault.getAbstractFileByPath("Smoke/Review.md"))).startsWith("Apply through toolbar");');
 	await run('await p.openReview("Smoke/Other.md");v.editor.merge.b.dispatch({changes:{from:0,insert:"Clear through toolbar\\n"}});document.querySelector(".proposal-toolbar [data-action=clearCurrent]").click();return true;');
-	await until('return v.editor.proposal().text==="Changed note.\\n";');
+	await until('return !v.editor && !v.snapshot;');
 	assert.equal(await run('return await app.vault.read(app.vault.getAbstractFileByPath("Smoke/Other.md"));'), 'Changed note.\n');
 	await run('await p.openReview("Smoke/Review.md");return true;');
 	await run('const displayed=await p.tools.store.read("Smoke/Review.md");await app.vault.modify(app.vault.getAbstractFileByPath(displayed.path),displayed.current+"Outside edit\\n");try{await p.tools.store.apply(displayed);throw new Error("Stale apply succeeded")}catch(e){if(!e.message.includes("Text changed"))throw e}return true;');
-	await run('await v.refresh();v.editor.merge.b.dispatch({changes:{from:0,insert:"Saved before reload\\n"}});return true;');
+	await run('await p.openReview("Smoke/Review.md");v.editor.merge.b.dispatch({changes:{from:0,insert:"Saved before reload\\n"}});return true;');
 	cli('plugin:reload', 'id=proposal');
 	await until('return !!p && p.tools.flushers.size===1;');
 	assert.equal(query<number>('document.querySelectorAll(".proposal-status").length'), 1);

@@ -52,18 +52,57 @@ void test('manual save detects stale proposal and operations serialize', async (
 	assert.equal((await store.read('One.md')).proposal.text, 'first');
 });
 
-void test('apply preserves comments; clear preserves originals; inactive records are ignored', async () => {
+void test('file apply removes the proposal and comments and cannot reappear after note edits', async () => {
 	const { store, io } = fixture();
 	const before = await store.read('One.md');
 	await store.manual('One.md', before.proposal, 'new', [{ id: 'a', from: 0, to: 3, text: 'Discuss' }]);
 	await store.apply(await store.read('One.md'));
 	assert.equal(io.originals.get('One.md'), 'new');
-	assert.equal((await store.active()).length, 1);
-	await store.edit('One.md', [], ['a']);
+	assert.equal(io.files.size, 0);
 	assert.equal((await store.active()).length, 0);
+	io.originals.set('One.md', 'later edit');
+	assert.equal((await store.active()).length, 0);
+	assert.equal((await store.read('One.md')).proposal.text, 'later edit');
+});
+
+void test('clear removes comments and preserves the original', async () => {
+	const { store, io } = fixture();
+	const before = await store.read('One.md');
+	await store.manual('One.md', before.proposal, 'new', [{ id: 'a', from: 0, to: 3, text: 'Discuss' }]);
 	await store.clear('One.md');
 	assert.equal(io.files.size, 0);
-	assert.equal(io.originals.get('One.md'), 'new');
+	assert.equal(io.originals.get('One.md'), before.current);
+});
+
+void test('file apply removes comment-only and inactive proposals', async () => {
+	for (const comments of [[], [{ id: 'a', from: 0, to: 3, text: 'Discuss' }]]) {
+		const { store, io } = fixture();
+		const before = await store.read('One.md');
+		await store.manual('One.md', before.proposal, before.current, comments);
+		await store.apply(await store.read('One.md'));
+		assert.equal(io.files.size, 0);
+		assert.equal(io.originals.get('One.md'), before.current);
+	}
+});
+
+void test('applying a single change preserves the remaining proposal and comments', async () => {
+	const { store, io } = fixture();
+	const before = await store.read('One.md');
+	const comments = [{ id: 'a', from: 0, to: 3, text: 'Discuss' }];
+	await store.manual('One.md', before.proposal, 'new\nchanged\n', comments);
+	await store.apply(await store.read('One.md'), 'new\ncontext\n');
+	assert.equal(io.originals.get('One.md'), 'new\ncontext\n');
+	assert.deepEqual((await store.read('One.md')).proposal, { version: 1, text: 'new\nchanged\n', comments });
+});
+
+void test('failed apply preserves the proposal and comments', async () => {
+	const { store, io } = fixture();
+	const before = await store.read('One.md');
+	await store.manual('One.md', before.proposal, 'new', [{ id: 'a', from: 0, to: 3, text: 'Discuss' }]);
+	const stored = io.files.get('.proposal/One.md.json');
+	io.writeCurrent = () => Promise.reject(new Error('Write failed'));
+	await assert.rejects(store.apply(await store.read('One.md')), /Write failed/);
+	assert.equal(io.files.get('.proposal/One.md.json'), stored);
 });
 
 void test('stale original or proposal cannot be applied', async () => {

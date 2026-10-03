@@ -171,14 +171,25 @@ export class ProposalView extends ItemView {
 			const displayed = this.snapshot;
 			const path = displayed.path;
 			let next: Snapshot;
-			try { next = await this.tools.store.read(path); }
+			let stored: boolean;
+			try {
+				next = await this.tools.store.read(path);
+				stored = (await this.tools.store.paths()).includes(path);
+			}
 			catch (error) {
 				if (this.snapshot !== displayed || displayed.path !== path || this.closed) return;
 				throw error;
 			}
 			if (this.snapshot !== displayed || displayed.path !== path || this.closed) return;
 			if (this.dirty) return this.refresh();
-			if (next.current !== displayed.current || JSON.stringify(next.proposal) !== JSON.stringify(displayed.proposal)) this.show(next);
+			if (!stored) {
+				this.snapshot = undefined;
+				this.editor?.destroy();
+				this.editor = undefined;
+				this.panel.empty();
+				this.panel.createEl('p', { text: 'No proposal selected.' });
+				this.title.setText('Proposal');
+			} else if (next.current !== displayed.current || JSON.stringify(next.proposal) !== JSON.stringify(displayed.proposal)) this.show(next);
 		}
 		await this.refreshFiles();
 	}
@@ -193,9 +204,9 @@ export class ProposalView extends ItemView {
 
 	private async applyAll(): Promise<void> {
 		await this.tools.flush();
-		const files = this.snapshots.filter(snapshot => snapshot.current !== snapshot.proposal.text);
+		const files = await Promise.all((await this.tools.store.paths()).map(path => this.tools.store.read(path)));
 		if (!files.length) return;
-		if (!await confirmAction(this.app, 'Apply all proposals?', `Write changes to ${files.length} original notes? Comments will remain.`)) return;
+		if (!await confirmAction(this.app, 'Apply all proposals?', `Apply ${files.length} proposals and remove them, including all comments?`)) return;
 		await this.tools.flush();
 		const failures: string[] = [];
 		for (const file of files) {
