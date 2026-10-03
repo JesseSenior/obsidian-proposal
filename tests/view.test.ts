@@ -19,6 +19,7 @@ interface TestView {
 // Use the real view actions and store with only Obsidian, the DOM editor, and confirmation replaced.
 const bundle = await build({
 	entryPoints: ['src/ui/view.ts'], bundle: true, write: false, platform: 'node', format: 'esm',
+	define: { window: 'testWindow' }, banner: { js: 'const testWindow = { clearTimeout };' },
 	plugins: [{ name: 'view-host', setup(build) {
 		build.onResolve({ filter: /^(obsidian|\.\/editor|\.\/modals)$/ }, args => ({ path: args.path, namespace: 'host' }));
 		build.onLoad({ filter: /.*/, namespace: 'host' }, args => ({ contents: args.path === 'obsidian'
@@ -31,14 +32,10 @@ const bundle = await build({
 				}` }));
 	} }],
 });
-// The imported bundle contains only local source and the fixed test doubles above.
-// eslint-disable-next-line no-unsanitized/method
+// eslint-disable-next-line no-unsanitized/method -- The bundle contains only local source and fixed test doubles.
 const { ProposalView } = await import(`data:text/javascript;base64,${Buffer.from(bundle.outputFiles[0]!.text).toString('base64')}`) as {
 	ProposalView: new (leaf: object, tools: ProposalTools, select: () => void) => TestView;
 };
-// Node has no browser window; provide the timer API used by this view.
-// eslint-disable-next-line obsidianmd/no-global-this
-Object.assign(globalThis, { window: { clearTimeout } });
 
 for (const action of ['applyCurrent', 'clearCurrent', 'applyAll', 'clearAll']) {
 	void test(`${action} removes comments and clears the displayed review`, async () => {
